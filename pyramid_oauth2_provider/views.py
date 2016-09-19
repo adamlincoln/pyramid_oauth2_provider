@@ -22,7 +22,6 @@ from six.moves.urllib.parse import parse_qsl
 from six.moves.urllib.parse import ParseResult
 from six.moves.urllib.parse import urlencode
 
-from .models import DBSession as db
 from .models import Oauth2Token
 from .models import Oauth2Code
 from .models import Oauth2RedirectUri
@@ -93,7 +92,7 @@ def oauth2_authorize(request):
     """
     request.client_id = request.params.get('client_id')
 
-    client = db.query(Oauth2Client).filter_by(
+    client = request.dbsession.query(Oauth2Client).filter_by(
         client_id=request.client_id).first()
 
     if not client:
@@ -107,7 +106,7 @@ def oauth2_authorize(request):
         not redirect_uri or redirect_uri == client.redirect_uris[0]):
         redirection_uri = client.redirect_uris[0]
     elif len(client.redirect_uris) > 0:
-        redirection_uri = db.query(Oauth2RedirectUri)\
+        redirection_uri = request.dbsession.query(Oauth2RedirectUri)\
             .filter_by(client_id=client.id, uri=redirect_uri).first()
 
     if redirection_uri is None:
@@ -133,8 +132,8 @@ def handle_authcode(request, client, redirection_uri, state=None):
 
     user_id = authenticated_userid(request)
     auth_code = Oauth2Code(client, user_id)
-    db.add(auth_code)
-    db.flush()
+    request.dbsession.add(auth_code)
+    request.dbsession.flush()
 
     qparams['code'] = auth_code.authcode
     if state:
@@ -214,7 +213,7 @@ def oauth2_token(request):
         log.info('did not receive client credentials')
         return HTTPUnauthorized('Invalid client credentials')
 
-    client = db.query(Oauth2Client).filter_by(
+    client = request.dbsession.query(Oauth2Client).filter_by(
         client_id=request.client_id).first()
 
     # Again, the authorization policy should catch this, but check again.
@@ -248,7 +247,8 @@ def handle_password(request, client):
 
     auth_check = request.registry.queryUtility(IAuthCheck)
     user_id = auth_check().checkauth(request.POST.get('username'),
-                                     request.POST.get('password'))
+                                     request.POST.get('password'),
+                                     request.dbsession)
 
     if not user_id:
         log.info('could not validate user credentials')
@@ -256,8 +256,8 @@ def handle_password(request, client):
             'password are invalid.'))
 
     auth_token = Oauth2Token(client, user_id)
-    db.add(auth_token)
-    db.flush()
+    request.dbsession.add(auth_token)
+    request.dbsession.flush()
     return auth_token.asJSON(token_type='bearer')
 
 def handle_refresh_token(request, client):
@@ -271,7 +271,7 @@ def handle_refresh_token(request, client):
         return HTTPBadRequest(InvalidRequest(error_description='user_id '
             'field required'))
 
-    auth_token = db.query(Oauth2Token).filter_by(
+    auth_token = request.dbsession.query(Oauth2Token).filter_by(
         refresh_token=request.POST.get('refresh_token')).first()
 
     if not auth_token:
@@ -290,8 +290,8 @@ def handle_refresh_token(request, client):
             'user_id does not match the given refresh_token.'))
 
     new_token = auth_token.refresh()
-    db.add(new_token)
-    db.flush()
+    request.dbsession.add(new_token)
+    request.dbsession.flush()
     return new_token.asJSON(token_type='bearer')
 
 def add_cache_headers(request):

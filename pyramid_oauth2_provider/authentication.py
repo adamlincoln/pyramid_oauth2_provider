@@ -22,7 +22,6 @@ from pyramid.httpexceptions import HTTPBadRequest
 from pyramid.httpexceptions import HTTPUnauthorized
 
 from .models import Oauth2Token
-from .models import DBSession as db
 from .errors import InvalidToken
 from .errors import InvalidRequest
 from .util import getClientCredentials
@@ -35,11 +34,16 @@ class OauthAuthenticationPolicy(CallbackAuthenticationPolicy):
         return bool(getClientCredentials(request))
 
     def _get_auth_token(self, request):
-        token_type, token = getClientCredentials(request)
+        client_credentials = getClientCredentials(request)
+        if not client_credentials:
+            return None
+
+        token_type, token = client_credentials
         if token_type != 'bearer':
             return None
 
-        auth_token = db.query(Oauth2Token).filter_by(access_token=token).first()
+        auth_token = request.dbsession.query(Oauth2Token) \
+                            .filter_by(access_token=token).first()
         # Bad input, return 400 Invalid Request
         if not auth_token:
             raise HTTPBadRequest(InvalidRequest())

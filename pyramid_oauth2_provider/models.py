@@ -34,7 +34,6 @@ from .generators import gen_token
 from .generators import gen_client_id
 from .generators import gen_client_secret
 
-DBSession = scoped_session(sessionmaker(extension=ZopeTransactionExtension()))
 Base = declarative_base()
 
 
@@ -154,9 +153,3 @@ class Oauth2Token(Base):
         }
         kwargs.update(token)
         return kwargs
-
-
-def initialize_sql(engine, settings):
-    DBSession.configure(bind=engine)
-    Base.metadata.bind = engine
-    Base.metadata.create_all(engine)
